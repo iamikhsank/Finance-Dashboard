@@ -1,0 +1,6 @@
+{
+  "name": "FinanceFlow Dashboard",
+  "description": "Dashboard keuangan interaktif untuk melacak pemasukan, pengeluaran, dan tren saldo harian.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-sans: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background-color: #f1f5f9;
+      color: #1e293b;
+    }
+    .font-mono { font-family: var(--font-mono); }
+    
+    /* Layout */
+    .sidebar { width: 280px; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .sidebar.collapsed { width: 0; opacity: 0; padding: 0; pointer-events: none; border-right-width: 0; }
+    
+    /* Table Height */
+    .table-container { 
+      max-height: 600px; 
+      overflow-y: auto; 
+      scrollbar-gutter: stable;
+    }
+    
+    .sticky-thead th {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #f8fafc; /* Matches table header bg */
+    }
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+    }
+    
+    .active-nav {
+      background: #0f172a;
+      color: white;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    .loader {
+      border-top-color: #3b82f6;
+      animation: spinner 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    @keyframes spinner {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Charts */
+    .chart-box { height: 220px; width: 100%; position: relative; }
+    .sparkline-box { height: 80px; width: 100%; margin-top: 1rem; }
+
+    /* Custom Checkbox/Radio */
+    input[type="checkbox"]:checked + label {
+      background-color: #3b82f6;
+      color: white;
+      border-color: #3b82f6;
+    }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+  </style>
+</head>
+<body class="flex min-h-screen">
+
+  <!-- Full Screen Loader -->
+  <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/10 backdrop-blur-sm z-[100] flex flex-col items-center justify-center transition-all duration-500">
+    <div class="bg-white p-8 rounded-[2rem] shadow-2xl flex flex-col items-center">
+      <div class="h-12 w-12 border-4 border-slate-100 border-t-blue-600 rounded-full loader"></div>
+      <p class="mt-4 text-xs font-bold text-slate-500 uppercase tracking-widest">Memproses Laporan...</p>
+    </div>
+  </div>
+
+  <!-- Mobile Sidebar Toggle -->
+  <button id="mobileMenuBtn" class="lg:hidden fixed bottom-6 right-6 z-[60] bg-blue-600 text-white p-4 rounded-full shadow-2xl active:scale-95 transition-all">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+
+  <!-- LEFT SIDEBAR (FILTER PANE) -->
+  <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transform -translate-x-full lg:translate-x-0 lg:static flex flex-col">
+    <div class="p-8">
+      <div class="flex items-center gap-3 mb-10">
+        <div class="h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-xl shadow-blue-200">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
+        <div>
+          <span class="text-2xl font-extrabold tracking-tight block">FinanceFlow</span>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Personal Dashboard</span>
+        </div>
+      </div>
+
+      <div class="space-y-10">
+        <!-- Month Filter -->
+        <div>
+          <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Filter Bulan</h3>
+          <div id="monthFilterContainer" class="space-y-2">
+            <button onclick="setMonth('All')" class="month-btn w-full text-left px-5 py-3 rounded-xl text-base font-bold transition-all active-nav" data-month="All">Semua Bulan</button>
+            <!-- Dynamic Month Buttons -->
+          </div>
+        </div>
+
+        <!-- Category Filter -->
+        <div>
+          <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Kategori</h3>
+          <div id="categoryFilterContainer" class="flex flex-wrap gap-2">
+            <button onclick="setCategory('All')" class="cat-btn px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 bg-slate-50 text-slate-600 transition-all active-nav" data-cat="All">Semua</button>
+            <!-- Dynamic Category Buttons -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-auto p-8 border-t border-slate-50">
+      <div class="bg-blue-50 rounded-2xl p-4">
+        <p class="text-[10px] font-black text-blue-600 uppercase mb-2">Sinkronisasi</p>
+        <button onclick="fetchData()" class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-100 transition-all active:scale-95">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          Refresh Data
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="flex-1 min-w-0 h-screen overflow-y-auto">
+    <!-- Top Header -->
+    <div class="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-6 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <!-- Desktop Sidebar Toggle -->
+        <button id="desktopToggleBtn" class="hidden lg:flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-all active:scale-90">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        </button>
+        <div>
+          <h2 id="viewTitle" class="text-xl font-bold">Dashboard Overview</h2>
+          <p class="text-sm text-slate-400 font-medium tracking-tight">Real-time financial tracking for your accounts</p>
+        </div>
+      </div>
+      <div id="dateRangeDisplay" class="text-xs font-black bg-slate-100 px-4 py-1.5 rounded-full uppercase tracking-widest text-slate-500">
+        April - Mei 2026
+      </div>
+    </div>
+
+    <div class="p-8">
+      <!-- Stats Overview Row -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        <!-- Card: Income -->
+        <div class="bg-white p-8 rounded-[1.25rem] border border-slate-200 shadow-sm flex flex-col">
+          <dt class="text-sm font-medium text-slate-500 mb-1">Total Pemasukan</dt>
+          <dd class="mt-1 flex items-baseline gap-2.5">
+            <p id="totalIncome" class="text-3xl font-bold text-slate-900 tracking-tight">Rp 0</p>
+            <p id="prevIncomeLabel" class="text-xs text-slate-400 font-medium whitespace-nowrap">from Rp 0</p>
+          </dd>
+          <dd class="mt-4 flex items-center gap-2">
+            <p id="incomeTrend" class="flex items-center gap-0.5 font-bold text-xs">
+              <!-- Arrow & Percentage will be here -->
+              <span>--</span>
+            </p>
+            <p class="text-xs text-slate-400 font-medium">from previous month</p>
+          </dd>
+        </div>
+
+        <!-- Card: Expense -->
+        <div class="bg-white p-8 rounded-[1.25rem] border border-slate-200 shadow-sm flex flex-col">
+          <dt class="text-sm font-medium text-slate-500 mb-1">Total Pengeluaran</dt>
+          <dd class="mt-1 flex items-baseline gap-2.5">
+            <p id="totalExpense" class="text-3xl font-bold text-slate-900 tracking-tight">Rp 0</p>
+            <p id="prevExpenseLabel" class="text-xs text-slate-400 font-medium whitespace-nowrap">from Rp 0</p>
+          </dd>
+          <dd class="mt-4 flex items-center gap-2">
+            <p id="expenseTrend" class="flex items-center gap-0.5 font-bold text-xs">
+              <span>--</span>
+            </p>
+            <p class="text-xs text-slate-400 font-medium">from previous month</p>
+          </dd>
+        </div>
+
+        <!-- Card: Balance -->
+        <div class="bg-white p-8 rounded-[1.25rem] border border-slate-200 shadow-sm flex flex-col">
+          <dt class="text-sm font-medium text-slate-500 mb-1">Saldo Akhir</dt>
+          <dd class="mt-1 flex items-baseline gap-2.5">
+            <p id="currentBalance" class="text-3xl font-bold text-slate-900 tracking-tight">Rp 0</p>
+            <p id="prevBalanceLabel" class="text-xs text-slate-400 font-medium whitespace-nowrap">from Rp 0</p>
+          </dd>
+          <dd class="mt-4 flex items-center gap-2">
+            <p id="balanceTrend" class="flex items-center gap-0.5 font-bold text-xs">
+              <span>--</span>
+            </p>
+            <p id="healthBadge" class="text-xs text-slate-400 font-medium">Analisis: ...</p>
+          </dd>
+        </div>
+      </div>
+
+      <!-- Charts Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-7 gap-6 mb-10">
+        <!-- New Horizontal Chart Layout with Grid weight -->
+        <div class="bg-white border border-slate-200 p-8 rounded-[1.25rem] shadow-sm flex flex-col lg:col-span-2">
+          <div class="mb-4">
+            <h3 class="text-sm font-bold text-slate-800">Tren Pemasukan</h3>
+            <p class="text-xs text-slate-400 font-medium">Grafik perkembangan pendapatan harian</p>
+          </div>
+          <div class="chart-box flex-1">
+            <canvas id="incomeLineChart"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 p-8 rounded-[1.25rem] shadow-sm flex flex-col lg:col-span-2">
+          <div class="mb-4">
+            <h3 class="text-sm font-bold text-slate-800">Tren Pengeluaran</h3>
+            <p class="text-xs text-slate-400 font-medium">Grafik perkembangan pengeluaran harian</p>
+          </div>
+          <div class="chart-box flex-1">
+            <canvas id="expenseLineChart"></canvas>
+          </div>
+        </div>
+        
+        <div class="bg-white border border-slate-200 p-8 rounded-[1.25rem] shadow-sm flex flex-col h-full lg:col-span-3">
+          <div class="mb-4">
+            <h3 class="text-sm font-bold text-slate-800">Monthly Analytics</h3>
+            <p class="text-xs text-slate-400 font-medium">Perbandingan pemasukan vs pengeluaran bulanan</p>
+          </div>
+          
+          <!-- Tremor Style Legend Summary -->
+          <div class="flex gap-10 mb-6">
+            <div>
+              <div class="flex items-center gap-1.5 mb-1">
+                <div class="h-2.5 w-2.5 rounded-sm bg-blue-500"></div>
+                <span class="text-xs font-medium text-slate-500">Incomes</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="chartTotalIncome" class="text-xl font-bold text-slate-900 tracking-tight">Rp 0</span>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center gap-1.5 mb-1">
+                <div class="h-2.5 w-2.5 rounded-sm bg-cyan-400"></div>
+                <span class="text-xs font-medium text-slate-500">Expenses</span>
+              </div>
+              <span id="chartTotalExpense" class="text-xl font-bold text-slate-900 tracking-tight">Rp 0</span>
+            </div>
+          </div>
+
+          <div class="flex-1 min-h-[220px] relative">
+            <canvas id="monthlyBarChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2 bg-white border border-slate-200 rounded-[1.25rem] shadow-sm overflow-hidden flex flex-col">
+          <div class="px-8 py-8 border-b border-slate-50 flex items-center justify-between shrink-0">
+             <div>
+               <h3 class="text-2xl font-black tracking-tight text-slate-800">Daftar Transaksi</h3>
+               <p class="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest" id="recordCount">0 Transaksi</p>
+             </div>
+             <div class="flex items-center gap-3">
+               <input type="text" id="searchInput" oninput="applyFilters()" placeholder="Cari transaksi..." class="bg-slate-50 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all w-48 lg:w-72">
+             </div>
+          </div>
+
+          <div class="table-container overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead class="sticky-thead">
+                <tr class="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                  <th class="px-8 py-6">Tanggal</th>
+                  <th class="px-8 py-6">Deskripsi</th>
+                  <th class="px-8 py-6">Kategori</th>
+                  <th class="px-8 py-6 text-right">Nominal</th>
+                </tr>
+              </thead>
+              <tbody id="transactionTable" class="divide-y divide-slate-50">
+                <!-- JS Render -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+    </div>
+  </main>
+
+  <script>
+    let rawData = { transactions: [], totals: { income: 0, expense: 0, balance: 0 } };
+    let currentFilteredData = [];
+    let activeMonth = 'All';
+    let activeCategory = 'All';
+    
+    // Chart instances
+    let incomeChart, expenseChart, barChart;
+    let inSpark, exSpark, baSpark;
+
+    // Custom Tooltip Handler for Chart.js
+    const getExternalTooltip = (context) => {
+      // Tooltip Element
+      let tooltipEl = document.getElementById('chartjs-tooltip');
+
+      // Create element on first render
+      if (!tooltipEl) {
+        tooltipEl = document.createElement('div');
+        tooltipEl.id = 'chartjs-tooltip';
+        tooltipEl.className = 'absolute bg-white border border-slate-200 rounded-[1rem] shadow-xl pointer-events-none transition-all duration-200 z-[100] px-6 py-4 opacity-0 -translate-y-4';
+        document.body.appendChild(tooltipEl);
+      }
+
+      // Hide if no tooltip
+      const tooltipModel = context.tooltip;
+      if (tooltipModel.opacity === 0) {
+        tooltipEl.style.opacity = 0;
+        return;
+      }
+
+      // Set caret border and colors
+      tooltipEl.classList.remove('above', 'below', 'no-transform');
+      if (tooltipModel.yAlign) {
+        tooltipEl.classList.add(tooltipModel.yAlign);
+      } else {
+        tooltipEl.classList.add('no-transform');
+      }
+
+      function getBody(bodyItem) {
+        return bodyItem.lines;
+      }
+
+      // Set Text
+      if (tooltipModel.body) {
+        const titleLines = tooltipModel.title || [];
+        const bodyLines = tooltipModel.body.map(getBody);
+
+        let innerHtml = '<div class="space-y-4">';
+
+        titleLines.forEach(function(title) {
+          innerHtml += `<div class="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 pb-2 mb-1">${title}</div>`;
+        });
+
+        innerHtml += '<div class="flex items-start gap-6">';
+        
+        // Progress-like Circle Decorative Element
+        innerHtml += `
+          <div class="relative h-14 w-14 flex items-center justify-center shrink-0">
+            <svg class="absolute inset-0 h-full w-full -rotate-90">
+              <circle cx="28" cy="28" r="24" fill="none" class="stroke-slate-100" stroke-width="4"></circle>
+              <circle cx="28" cy="28" r="24" fill="none" class="stroke-blue-600" stroke-width="4" stroke-dasharray="150" stroke-dashoffset="40"></circle>
+              <circle cx="28" cy="28" r="18" fill="none" class="stroke-slate-100" stroke-width="3"></circle>
+              <circle cx="28" cy="28" r="18" fill="none" class="stroke-cyan-400" stroke-width="3" stroke-dasharray="113" stroke-dashoffset="50"></circle>
+            </svg>
+          </div>
+        `;
+
+        // Metrics Grid
+        innerHtml += '<div class="grid grid-cols-2 gap-x-8 gap-y-3">';
+        bodyLines.forEach(function(body, i) {
+          const bodyParts = body[0].split(':');
+          const label = bodyParts[0].trim();
+          const value = bodyParts[1] ? bodyParts[1].trim() : body[0];
+          const colors = tooltipModel.labelColors[i];
+          const isIncome = label.toLowerCase().includes('income');
+          
+          innerHtml += `
+            <div class="flex flex-col">
+              <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">${label}</span>
+              <span class="text-sm font-bold ${isIncome ? 'text-emerald-600' : 'text-slate-900'}">${value}</span>
+            </div>
+          `;
+        });
+        
+        // Add a "Status" or decorative metric if it's a single metric chart
+        if (bodyLines.length === 1) {
+            innerHtml += `
+            <div class="flex flex-col">
+              <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Status</span>
+              <span class="text-sm font-bold text-blue-600">Terverifikasi</span>
+            </div>
+          `;
+        }
+
+        innerHtml += '</div></div></div>';
+
+        tooltipEl.innerHTML = innerHtml;
+      }
+
+      const position = context.chart.canvas.getBoundingClientRect();
+      const bodyFont = Chart.helpers.toFont(tooltipModel.options.bodyFont);
+
+      // Display, position, and set styles for font
+      tooltipEl.style.opacity = 1;
+      tooltipEl.style.left = position.left + window.pageXOffset + tooltipModel.caretX + 'px';
+      tooltipEl.style.top = position.top + window.pageYOffset + tooltipModel.caretY - 80 + 'px';
+      tooltipEl.style.font = bodyFont.string;
+      tooltipEl.style.padding = tooltipModel.padding + 'px ' + tooltipModel.padding + 'px';
+    };
+
+    function renderSparkline(canvasId, points, color) {
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, 0, 80);
+      gradient.addColorStop(0, color.replace('1)', '0.2)'));
+      gradient.addColorStop(1, color.replace('1)', '0)'));
+
+      return new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: points.map((_, i) => i),
+          datasets: [{
+            data: points,
+            borderColor: color,
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: true,
+            backgroundColor: gradient,
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false } },
+          elements: { line: { capBezierPoints: true } }
+        }
+      });
+    }
+
+    function calculateComparison(current, previous) {
+      if (!previous || previous === 0) return { percent: '0.0', isPositive: true };
+      const diff = current - previous;
+      const percent = (Math.abs(diff) / previous) * 100;
+      return {
+        percent: percent.toFixed(1),
+        isPositive: diff >= 0,
+        absolute: diff
+      };
+    }
+
+    function updateCardTrend(containerId, change) {
+      const el = document.getElementById(containerId);
+      const isPos = change.isPositive;
+      
+      const arrowUp = `<svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5L19 12H15V19H9V12H5L12 5Z"/></svg>`;
+      const arrowDown = `<svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 19L5 12H9V5H15V12H19L12 19Z"/></svg>`;
+      
+      el.innerHTML = `
+        ${isPos ? arrowUp : arrowDown}
+        <span>${change.percent}%</span>
+      `;
+      el.className = `flex items-center gap-0.5 font-bold text-xs ${isPos ? 'text-emerald-600' : 'text-rose-600'}`;
+    }
+
+    const compactIDR = (val) => new Intl.NumberFormat('id-ID', { 
+      style: 'currency', currency: 'IDR', notation: 'compact', maximumFractionDigits: 1
+    }).format(val);
+
+    const formatIDR = (val) => new Intl.NumberFormat('id-ID', { 
+      style: 'currency', currency: 'IDR', minimumFractionDigits: 0 
+    }).format(val);
+
+    // Initial Dashboard Fetch
+    function fetchData() {
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.style.opacity = '1';
+      overlay.classList.remove('pointer-events-none');
+      
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(processData)
+          .withFailureHandler(handleError)
+          .getSheetData();
+      } else {
+        // Desktop Mock Simulation
+        setTimeout(() => processData({
+          transactions: [
+            {date: '01/04/2026', month: 'April', category: 'Gaji', description: 'Gaji Project', income: 5000000, expense: 0, balance: 5000000},
+            {date: '02/04/2026', month: 'April', category: 'Makan', description: 'Solaria', income: 0, expense: 150000, balance: 4850000},
+            {date: '05/05/2026', month: 'Mei', category: 'Bensin', description: 'SPBU', income: 0, expense: 30000, balance: 4820000}
+          ],
+          totals: { income: 5000000, expense: 180000, balance: 4820000 }
+        }), 800);
+      }
+    }
+
+    function processData(data) {
+      document.getElementById('loadingOverlay').style.opacity = '0';
+      document.getElementById('loadingOverlay').classList.add('pointer-events-none');
+
+      if (data.error) {
+        alert('Data Error: ' + data.error);
+        return;
+      }
+
+      rawData = data;
+      renderFilters();
+      applyFilters();
+    }
+
+    const getCategoryStyles = (category) => {
+      if (category === 'All') return 'bg-slate-900 text-white border-slate-900';
+      
+      const styles = {
+        'Gaji': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        'Makan': 'bg-rose-100 text-rose-700 border-rose-200',
+        'Bensin': 'bg-orange-100 text-orange-700 border-orange-200',
+        'Belanja': 'bg-purple-100 text-purple-700 border-purple-200',
+        'Listrik': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+        'Kesehatan': 'bg-cyan-100 text-cyan-700 border-cyan-200'
+      };
+      return styles[category] || 'bg-blue-100 text-blue-700 border-blue-200';
+    };
+
+    function renderFilters() {
+      const months = ['All', ...new Set(rawData.transactions.map(t => t.month))];
+      const categories = ['All', ...new Set(rawData.transactions.map(t => t.category))];
+
+      // Month Buttons
+      const monthContainer = document.getElementById('monthFilterContainer');
+      monthContainer.innerHTML = months.map(m => `
+        <button onclick="setMonth('${m}')" 
+                class="month-btn w-full text-left px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${m === activeMonth ? 'active-nav' : 'text-slate-500 hover:bg-slate-50'}" 
+                data-month="${m}">${m === 'All' ? 'Semua Bulan' : m}</button>
+      `).join('');
+
+      // Category Chips
+      const catContainer = document.getElementById('categoryFilterContainer');
+      catContainer.innerHTML = categories.map(c => {
+        const colorStyles = getCategoryStyles(c);
+        const isActive = c === activeCategory;
+        const activeClasses = 'opacity-100 scale-100 shadow-sm';
+        const inactiveClasses = 'opacity-60 scale-95 grayscale-[0.5] hover:grayscale-0 hover:opacity-100 hover:scale-100';
+
+        return `
+          <button onclick="setCategory('${c}')" 
+                  class="cat-btn px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${colorStyles} ${isActive ? activeClasses : inactiveClasses}" 
+                  data-cat="${c}">${c === 'All' ? 'Semua' : c}</button>
+        `;
+      }).join('');
+    }
+
+    function setMonth(m) {
+      activeMonth = m;
+      renderFilters();
+      applyFilters();
+    }
+
+    function setCategory(c) {
+      activeCategory = c;
+      renderFilters();
+      applyFilters();
+    }
+
+    function applyFilters() {
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      
+      currentFilteredData = rawData.transactions.filter(t => {
+        const matchesMonth = activeMonth === 'All' || t.month === activeMonth;
+        const matchesCat = activeCategory === 'All' || t.category === activeCategory;
+        const matchesSearch = t.description.toLowerCase().includes(search) || t.category.toLowerCase().includes(search);
+        return matchesMonth && matchesCat && matchesSearch;
+      });
+
+      renderDashboard();
+    }
+
+    function renderDashboard() {
+      let filteredIncome = 0;
+      let filteredExpense = 0;
+      let tableHtml = '';
+
+      currentFilteredData.slice().reverse().forEach(tx => {
+        filteredIncome += tx.income;
+        filteredExpense += tx.expense;
+
+        const isInc = tx.income > 0;
+        const amt = isInc ? tx.income : tx.expense;
+        const color = isInc ? 'text-emerald-500' : 'text-slate-900 font-bold';
+        const bgIcon = isInc ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500';
+
+        tableHtml += `
+          <tr class="group hover:bg-blue-50/40 transition-all duration-300">
+            <td class="px-8 py-6 whitespace-nowrap text-xs font-mono text-slate-400 font-bold">${tx.date}</td>
+            <td class="px-8 py-6">
+              <div class="flex items-center gap-3">
+                <div class="h-10 w-10 min-w-[2.5rem] rounded-lg ${bgIcon} flex items-center justify-center text-xs font-black uppercase tracking-tighter">
+                  ${tx.category.charAt(0)}
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-base font-bold text-slate-800 leading-none mb-1 capitalize">${tx.description}</span>
+                  <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">${tx.month}</span>
+                </div>
+              </div>
+            </td>
+            <td class="px-8 py-6">
+              <span class="px-4 py-1.5 border text-xs font-black rounded-lg uppercase tracking-widest ${getCategoryStyles(tx.category)}">${tx.category}</span>
+            </td>
+            <td class="px-8 py-6 text-right font-mono text-base ${color}">
+              ${isInc ? '+' : ''}${formatIDR(amt).replace('Rp', '')}
+            </td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('transactionTable').innerHTML = tableHtml || `<tr><td colspan="4" class="py-20 text-center font-bold text-slate-300">Tidak ada data ditemukan</td></tr>`;
+      document.getElementById('recordCount').innerText = `${currentFilteredData.length} Transaksi`;
+
+      // Jika filter 'All All' dan search kosong, gunakan total dari Spreadsheet
+      // Jika ada filter, hitung ulang berdasarkan data yang terlihat
+      const isFiltered = activeMonth !== 'All' || activeCategory !== 'All' || document.getElementById('searchInput').value !== '';
+      
+      const displayTotals = isFiltered ? {
+        income: filteredIncome,
+        expense: filteredExpense,
+        balance: filteredIncome - filteredExpense
+      } : rawData.totals;
+
+      document.getElementById('totalIncome').innerText = formatIDR(displayTotals.income);
+      document.getElementById('totalExpense').innerText = formatIDR(displayTotals.expense);
+      document.getElementById('currentBalance').innerText = formatIDR(displayTotals.balance);
+
+      // --- CHART LOGIC ---
+      renderCharts(currentFilteredData);
+      renderKpiComparisons();
+
+      // Health Analysis
+      const healthBadge = document.getElementById('healthBadge');
+      if (displayTotals.balance >= 0) {
+        healthBadge.innerText = "Analisis: Surplus";
+      } else {
+        healthBadge.innerText = "Analisis: Defisit";
+      }
+      
+      document.getElementById('viewTitle').innerText = isFiltered ? 'Filtered Results' : 'Dashboard Overview';
+    }
+
+    function renderKpiComparisons() {
+      // Get all unique months in order
+      const monthsOrder = [...new Set(rawData.transactions.map(t => t.month))];
+      
+      // Determine "Current" and "Previous" target months
+      let currentMonth = activeMonth;
+      if (currentMonth === 'All') {
+          currentMonth = monthsOrder[monthsOrder.length - 1] || 'All';
+      }
+      
+      const currentIndex = monthsOrder.indexOf(currentMonth);
+      const prevMonth = currentIndex > 0 ? monthsOrder[currentIndex - 1] : null;
+
+      // Helper to sum by month
+      const getMonthlyTotal = (m) => {
+        if (!m) return { in: 0, ex: 0, ba: 0 };
+        const data = rawData.transactions.filter(t => t.month === m);
+        const income = data.reduce((sum, t) => sum + t.income, 0);
+        const expense = data.reduce((sum, t) => sum + t.expense, 0);
+        return { in: income, ex: expense, ba: income - expense };
+      };
+
+      const currStats = (activeMonth === 'All') ? {
+          in: rawData.totals.income,
+          ex: rawData.totals.expense,
+          ba: rawData.totals.balance
+      } : getMonthlyTotal(currentMonth);
+      
+      const prevStats = getMonthlyTotal(prevMonth);
+
+      // Value Update with Labels
+      document.getElementById('prevIncomeLabel').innerText = `from ${compactIDR(prevStats.in)}`;
+      document.getElementById('prevExpenseLabel').innerText = `from ${compactIDR(prevStats.ex)}`;
+      document.getElementById('prevBalanceLabel').innerText = `from ${compactIDR(prevStats.ba)}`;
+
+      // Update Trends
+      updateCardTrend('incomeTrend', calculateComparison(currStats.in, prevStats.in));
+      updateCardTrend('expenseTrend', calculateComparison(currStats.ex, prevStats.ex));
+      updateCardTrend('balanceTrend', calculateComparison(currStats.ba, prevStats.ba));
+    }
+
+    function renderCharts(data) {
+      // Cleanup existing charts
+      if (incomeChart) incomeChart.destroy();
+      if (expenseChart) expenseChart.destroy();
+      if (barChart) barChart.destroy();
+
+      const sortedData = data.slice().sort((a, b) => {
+        const [d1, m1, y1] = a.date.split('/');
+        const [d2, m2, y2] = b.date.split('/');
+        return new Date(`${y1}-${m1}-${d1}`) - new Date(`${y2}-${m2}-${d2}`);
+      });
+
+      // Data Processing for Line Charts
+      const labels = sortedData.map(d => d.date.split('/')[0] + '/' + d.date.split('/')[1]);
+      const incomePoints = sortedData.map(d => d.income);
+      const expensePoints = sortedData.map(d => d.expense);
+
+      // Data Processing for Monthly Comparison (Bar Chart)
+      const monthlyData = {};
+      data.forEach(tx => {
+        if (!monthlyData[tx.month]) monthlyData[tx.month] = { income: 0, expense: 0 };
+        monthlyData[tx.month].income += tx.income;
+        monthlyData[tx.month].expense += tx.expense;
+      });
+      const monthLabels = Object.keys(monthlyData);
+      const monthlyIncome = monthLabels.map(m => monthlyData[m].income);
+      const monthlyExpense = monthLabels.map(m => monthlyData[m].expense);
+
+      const totalIn = monthlyIncome.reduce((a, b) => a + b, 0);
+      const totalOut = monthlyExpense.reduce((a, b) => a + b, 0);
+      
+      document.getElementById('chartTotalIncome').innerText = compactIDR(totalIn);
+      document.getElementById('chartTotalExpense').innerText = compactIDR(totalOut);
+
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { 
+          legend: { display: false },
+          tooltip: {
+            enabled: false,
+            external: getExternalTooltip
+          }
+        },
+        scales: {
+          y: { display: false },
+          x: { 
+            grid: { display: false },
+            ticks: { font: { size: 10, family: 'Plus Jakarta Sans', weight: 'bold' }, color: '#94a3b8' }
+          }
+        },
+        interaction: { intersect: false, mode: 'index' }
+      };
+
+      // Income Line Chart
+      incomeChart = new Chart(document.getElementById('incomeLineChart'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: incomePoints,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0
+          }]
+        },
+        options: chartOptions
+      });
+
+      // Expense Line Chart
+      expenseChart = new Chart(document.getElementById('expenseLineChart'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: expensePoints,
+            borderColor: '#f43f5e',
+            backgroundColor: 'rgba(244, 63, 94, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0
+          }]
+        },
+        options: chartOptions
+      });
+
+      // Monthly Clustered Bar Chart
+      barChart = new Chart(document.getElementById('monthlyBarChart'), {
+        type: 'bar',
+        data: {
+          labels: monthLabels,
+          datasets: [
+            {
+              label: 'Incomes',
+              data: monthlyIncome,
+              backgroundColor: '#3b82f6', // Tailwind blue-500
+              borderRadius: 4,
+              barPercentage: 0.8,
+              categoryPercentage: 0.6
+            },
+            {
+              label: 'Expenses',
+              data: monthlyExpense,
+              backgroundColor: '#22d3ee', // Tailwind cyan-400
+              borderRadius: 4,
+              barPercentage: 0.8,
+              categoryPercentage: 0.6
+            }
+          ]
+        },
+        options: {
+          ...chartOptions,
+          scales: {
+            y: {
+              grid: { color: '#f1f5f9', drawTicks: false, borderDash: [5, 5] },
+              border: { display: false },
+              ticks: { 
+                font: { size: 11, family: 'Plus Jakarta Sans' }, 
+                color: '#94a3b8',
+                callback: (val) => compactIDR(val).replace('Rp', '')
+              }
+            },
+            x: { 
+              grid: { display: false },
+              border: { display: false },
+              ticks: { font: { size: 11, family: 'Plus Jakarta Sans', weight: '600' }, color: '#64748b' }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              enabled: false,
+              external: getExternalTooltip,
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${formatIDR(ctx.parsed.y)}`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function handleError(err) {
+      alert('Gagal mengambil data: ' + err);
+      document.getElementById('loadingOverlay').style.opacity = '0';
+      document.getElementById('loadingOverlay').classList.add('pointer-events-none');
+    }
+
+    // Sidebar Toggles
+    const sidebar = document.getElementById('sidebar');
+    
+    document.getElementById('mobileMenuBtn').onclick = () => {
+      sidebar.classList.toggle('-translate-x-full');
+    };
+
+    document.getElementById('desktopToggleBtn').onclick = () => {
+      sidebar.classList.toggle('collapsed');
+      sidebar.classList.toggle('lg:static'); // Prevent interference with relative layout logic
+    };
+
+    window.onload = fetchData;
+  </script>
+</body>
+</html>
